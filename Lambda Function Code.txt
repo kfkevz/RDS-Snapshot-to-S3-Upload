@@ -1,0 +1,29 @@
+import boto3
+from datetime import datetime
+
+def lambda_handler(event, context):
+    # Enter the RDS details
+    client = boto3.client('rds')
+    db_cluster_identifier = 'prod-wallet-sporty-aurora-mysql-cluster' # Replace with your db cluster name
+    snapshots = client.describe_db_cluster_snapshots(DBClusterIdentifier=db_cluster_identifier, SnapshotType='automated')
+    latest_snapshot = sorted(snapshots['DBClusterSnapshots'], key=lambda x: x['SnapshotCreateTime'], reverse=True)[0]
+    snapshot_identifier = latest_snapshot['DBClusterSnapshotIdentifier']
+    s3_bucket_name = 'exported-snapshot-prodwallet-db' #R eplace with your S3 Bucket name
+    s3_bucket_folder = 'Uploads/' # Replace with your S3 bucket folder
+    iam_role_arn = 'arn:aws:iam::842527893291:role/DBALambdaRole'  # Replace with your IAM Role ARN
+    kms_key_id = 'arn:aws:kms:ap-northeast-1:842527893291:key/eb5a0640-f610-4104-be14-af6ab1734dab' # Replace with your KMS Key ARN
+    
+    # Export snapshot to S3
+    export_task_identifier = 'rds-prd-wallet-export-' + datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
+    s3_export_task = client.start_export_task(
+        ExportTaskIdentifier=export_task_identifier,
+        SourceArn='arn:aws:rds:ap-northeast-1:842527893291:cluster-snapshot:'+snapshot_identifier, # Replace the region and the account id with your own
+        S3BucketName=s3_bucket_name,
+        IamRoleArn=iam_role_arn,
+        KmsKeyId=kms_key_id,
+        S3Prefix=s3_bucket_folder
+    )
+    return {
+        'statusCode': 200,
+        'body': 'Snapshot exported successfully!'
+    }
